@@ -1,6 +1,12 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import Amplify, { API, graphqlOperation } from 'aws-amplify'
+import config from './aws-exports'
+import { listTodos } from './graphql/queries'
+import { createTodo } from './graphql/mutations'
 import { motion } from 'framer-motion'
 import Todo from './components/Todo'
+
+Amplify.configure(config)
 
 const todoList = [
   {
@@ -21,16 +27,24 @@ const todoList = [
 ]
 
 const App: React.FC = () => {
-  const [todos, setTodos] = useState(todoList)
+  const [todos, setTodos] = useState<Todo[]>([])
   const [text, setText] = useState('')
 
+  useEffect(() => {
+    API.graphql(graphqlOperation(listTodos))
+      .then((resp: any) => {
+        setTodos(resp.data.listTodos.items)
+      })
+      .catch((e: any) => console.error(e))
+  }, [])
+
   const onDelete = (id: string) => {
-    const updatedTodos = todos.filter(todo => todo.id !== id)
+    const updatedTodos = todos.filter((todo: Todo) => todo.id !== id)
     setTodos(updatedTodos)
   }
 
   const toggleCheck = (id: string) => {
-    const updatedTodos = todos.map(todo => {
+    const updatedTodos = todos.map((todo: Todo) => {
       if (todo.id === id) {
         return {
           ...todo,
@@ -42,17 +56,22 @@ const App: React.FC = () => {
     setTodos(updatedTodos)
   }
 
-  const addTodo = () => {
-    const updatedTodos = [
-      ...todos,
-      {
-        id: todos.length.toString(),
-        name: text,
-        done: false
-      }
-    ]
-    setTodos(updatedTodos)
-    setText('')
+  const addTodo = async () => {
+    try {
+      const resp = await API.graphql(
+        graphqlOperation(createTodo, {
+          input: {
+            name: text,
+            done: false
+          }
+        })
+      )
+      const updatedTodos = [...todos, resp.data.createTodo]
+      setTodos(updatedTodos)
+      setText('')
+    } catch (e) {
+      console.log(e)
+    }
   }
 
   return (
@@ -68,7 +87,7 @@ const App: React.FC = () => {
         }}
         className="main"
       >
-        {todos.map((todo: Todo) => (
+        {(todos || []).map((todo: Todo) => (
           <Todo key={todo.id} id={todo.id} name={todo.name} done={todo.done} onDelete={onDelete} onChange={toggleCheck} />
         ))}
 
