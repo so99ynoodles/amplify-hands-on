@@ -87,20 +87,31 @@ const App: React.FC = () => {
     }
   }
 
-  const toggleCheck = (id: string) => {
-    const input: UpdateTodoInput = {
-      id
-    }
-    const updatedTodos = todos.map((todo: Todo) => {
-      if (todo.id === id) {
-        return {
-          ...todo,
+  const toggleCheck = async (id: string) => {
+    const todo: Todo | undefined = todos.find(t => t.id === id)
+
+    try {
+      if (todo) {
+        const input: UpdateTodoInput = {
+          id,
           done: !todo.done
         }
+
+        await API.graphql(graphqlOperation(updateTodo, { input }))
+        const updatedTodos = todos.map((todo: Todo) => {
+          if (todo.id === id) {
+            return {
+              ...todo,
+              done: !todo.done
+            }
+          }
+          return todo
+        })
+        setTodos(updatedTodos)
       }
-      return todo
-    })
-    setTodos(updatedTodos)
+    } catch (e) {
+      console.log(e)
+    }
   }
 
   const addTodo = async () => {
