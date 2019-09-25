@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import Amplify, { API, graphqlOperation } from 'aws-amplify'
 import config from './aws-exports'
+import { CreateTodoInput, DeleteTodoInput, UpdateTodoInput, CreateTodoMutation, OnCreateTodoSubscription } from './API'
 import { listTodos } from './graphql/queries'
-import { createTodo } from './graphql/mutations'
+import { createTodo, deleteTodo, updateTodo } from './graphql/mutations'
 import { motion } from 'framer-motion'
 import Todo from './components/Todo'
+import { onCreateTodo, onUpdateTodo, onDeleteTodo } from './graphql/subscriptions'
 
 Amplify.configure(config)
 
@@ -26,24 +28,69 @@ const todoList = [
   }
 ]
 
+type TodoListResponse = {
+  data?: { listTodos: { items: Todo[] } }
+  error?: string
+}
+
 const App: React.FC = () => {
   const [todos, setTodos] = useState<Todo[]>([])
   const [text, setText] = useState('')
 
   useEffect(() => {
     API.graphql(graphqlOperation(listTodos))
-      .then((resp: any) => {
-        setTodos(resp.data.listTodos.items)
+      .then((resp: TodoListResponse) => {
+        if (resp.data) {
+          setTodos(resp.data.listTodos.items)
+        }
       })
-      .catch((e: any) => console.error(e))
+      .catch((e: TodoListResponse) => console.error(e))
   }, [])
 
-  const onDelete = (id: string) => {
-    const updatedTodos = todos.filter((todo: Todo) => todo.id !== id)
-    setTodos(updatedTodos)
+  type CreateTodoEvent = { value: { data: OnCreateTodoSubscription } }
+
+  useEffect(() => {
+    const subscription = API.graphql(graphqlOperation(onCreateTodo)).subscribe({
+      next: async ({ value: { data } }: CreateTodoEvent) => {
+        if (data.onCreateTodo) {
+          const newTodo = {
+            id: data.onCreateTodo.id,
+            name: data.onCreateTodo.name,
+            done: data.onCreateTodo.done
+          }
+          setTodos(prev => [...prev, newTodo])
+        }
+      }
+    })
+
+    return subscription.unsubscribe
+  }, [])
+
+  // useEffect(() => {
+  //   return API.graphql(graphqlOperation(onUpdateTodo))
+  // }, [])
+
+  // useEffect(() => {
+  //   return API.graphql(graphqlOperation(onDeleteTodo))
+  // }, [])
+
+  const onDelete = async (id: string) => {
+    const input: DeleteTodoInput = {
+      id
+    }
+    try {
+      const resp = await API.graphql(graphqlOperation(deleteTodo, { input }))
+      const updatedTodos = todos.filter((todo: Todo) => todo.id !== resp.data.deleteTodo.id)
+      setTodos(updatedTodos)
+    } catch (e) {
+      console.log(e)
+    }
   }
 
   const toggleCheck = (id: string) => {
+    const input: UpdateTodoInput = {
+      id
+    }
     const updatedTodos = todos.map((todo: Todo) => {
       if (todo.id === id) {
         return {
@@ -58,16 +105,17 @@ const App: React.FC = () => {
 
   const addTodo = async () => {
     try {
+      const input: CreateTodoInput = {
+        name: text,
+        done: false
+      }
       const resp = await API.graphql(
         graphqlOperation(createTodo, {
-          input: {
-            name: text,
-            done: false
-          }
+          input
         })
       )
-      const updatedTodos = [...todos, resp.data.createTodo]
-      setTodos(updatedTodos)
+      // const updatedTodos = [...todos, resp.data.createTodo]
+      // setTodos(updatedTodos)
       setText('')
     } catch (e) {
       console.log(e)
